@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fire & Human Detection — Live Preview</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body { background:#f6f8fa; }
+    .preview {
+      min-height:340px;
+      border-radius:8px;
+      background:#fff;
+      border:2px dashed #ddd;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:8px;
+    }
+    img, video { max-width:100%; border-radius:6px; }
+    #resultBox{ display:none; }
+    .small-muted { font-size:0.9rem; color:#666; }
+    /* tighten controls and align buttons with inputs */
+    .controls-row .form-control, .controls-row .form-select { height: calc(2.4rem + 2px); }
+    /* keep everything on one line on larger screens, stack on small */
+    @media (min-width: 768px) {
+      .controls-row { align-items: end; }
+    }
+    @media (max-width: 767px) {
+      .controls-row .col-auto { display:block; width:100%; margin-bottom:.5rem; }
+      .controls-row .col { width:100%; margin-bottom:.5rem; }
+      .controls-row .btn { width:49%; }
+    }
+
+    /* --- Heading & Title Colors (added) --- */
+    h3.page-title {
+      color: #d9534f; /* fire-themed red */
+      font-weight: 700;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    }
+
+    h6.section-title {
+      color: #0d6efd; /* bootstrap blue */
+      font-weight: 600;
+    }
+
+    .preview-heading {
+      color: #6f42c1; /* purple accent for preview labels if needed */
+      font-weight: 600;
+    }
+
+    /* subtle responsive adjustment for title size */
+    @media (max-width: 575px) {
+      h3.page-title { font-size: 1.05rem; }
+    }
+
+   /* Make form labels bold */
+   .form-label {
+      font-weight: 700 !important;
+   }
+  </style>
+</head>
+<body class="p-4">
+  <div class="container">
+   <h3 class="mb-3 text-center page-title">
+  🔥 End-to-End CNN-Based System for Human Detection in Fire Using a Flask Web Application
+</h3>
+
+
+    <!-- SINGLE LINE CONTROLS: Input Type | File | Process | Cancel -->
+    <div class="row g-2 controls-row mb-3">
+      <div class="col-auto">
+        <label class="form-label mb-0 small-muted">Input Type</label>
+        <select id="inputType" class="form-select">
+          <option value="image">Image</option>
+          <option value="video" selected>Video</option>
+        </select>
+      </div>
+
+      <div class="col">
+        <label class="form-label mb-0 small-muted">Choose file</label>
+        <input id="fileInput" type="file" class="form-control" />
+      </div>
+
+      <div class="col-auto d-flex gap-2">
+        <div class="d-grid" style="min-width:110px;">
+          <button id="processBtn" class="btn btn-primary">Process</button>
+        </div>
+        <div class="d-grid" style="min-width:110px;">
+          <button id="cancelBtn" class="btn btn-outline-danger" disabled>Cancel Job</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PREVIEWS -->
+    <div class="row">
+      <div class="col-md-6">
+        <h6 class="section-title">Original</h6>
+        <div id="left" class="preview">No file selected</div>
+      </div>
+
+      <div class="col-md-6">
+        <h6 class="section-title">Annotated Output</h6>
+        <div id="right" class="preview">Output will appear here</div>
+        <div id="progressArea" class="mt-2 small-muted"></div>
+      </div>
+    </div>
+
+    <!-- RESULT -->
+    <div id="resultBox" class="mt-3">
+      <div id="resultText" class="alert alert-info"></div>
+    </div>
+  </div>
+
+<script>
+  const inputType = document.getElementById("inputType");
+  const fileInput = document.getElementById("fileInput");
+  const left = document.getElementById("left");
+  const right = document.getElementById("right");
+  const processBtn = document.getElementById("processBtn");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const resultBox = document.getElementById("resultBox");
+  const resultText = document.getElementById("resultText");
+  const progressArea = document.getElementById("progressArea");
+
+  let currentFile = null;
+  let currentJobId = null;
+  let streamImg = null;
+
+  // helper: cancel current job (if any) and update UI
+  async function cancelCurrentJob() {
+    if (!currentJobId) return;
+    try {
+      cancelBtn.disabled = true;
+      await fetch(`/cancel_job/${currentJobId}`, { method: "POST" });
+      // show a quick message on right panel
+      right.innerHTML = `<div class="text-warning">Cancellation requested for job ${currentJobId}.</div>`;
+    } catch (e) {
+      console.warn("Cancel request failed:", e);
+      right.innerHTML = `<div class="text-warning">Cancellation request failed.</div>`;
+    } finally {
+      // reset local job state (server may still mark it canceled)
+      currentJobId = null;
+      if (streamImg) { streamImg.remove(); streamImg = null; }
+      cancelBtn.disabled = true;
+    }
+  }
+
+  // When user switches input type, auto-cancel any running job
+  inputType.addEventListener("change", async () => {
+    if (currentJobId) {
+      await cancelCurrentJob();
+    }
+    // clear UI
+    left.innerHTML = "No file selected";
+    right.innerHTML = "Output will appear here";
+    resultBox.style.display = "none";
+    fileInput.value = "";
+    currentFile = null;
+  });
+
+  // When user selects a new file, auto-cancel running job (if any)
+  fileInput.addEventListener("change", async (e) => {
+    // if a video job is running, cancel it before switching the preview
+    if (currentJobId) {
+      await cancelCurrentJob();
+    }
+    resultBox.style.display = "none";
+    right.innerHTML = "Output will appear here";
+    progressArea.innerHTML = "";
+    if (!fileInput.files.length) {
+      left.innerHTML = "No file selected";
+      currentFile = null;
+      return;
+    }
+    currentFile = fileInput.files[0];
+    if (inputType.value === "image") {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(currentFile);
+      left.innerHTML = "";
+      left.appendChild(img);
+    } else {
+      const vid = document.createElement("video");
+      vid.src = URL.createObjectURL(currentFile);
+      vid.controls = true;
+      left.innerHTML = "";
+      left.appendChild(vid);
+    }
+  });
+
+  processBtn.addEventListener("click", async () => {
+    if (!currentFile) { alert("Choose a file first"); return; }
+    resultBox.style.display = "none";
+    right.innerHTML = "<div>Processing... please wait</div>";
+    progressArea.innerHTML = "";
+
+    if (inputType.value === "image") {
+      const fd = new FormData();
+      fd.append("image", currentFile);
+      const resp = await fetch("/predict_image", { method: "POST", body: fd });
+      const data = await resp.json();
+      if (data.output_image) {
+        const img = document.createElement("img");
+        img.src = "/" + data.output_image;
+        right.innerHTML = "";
+        right.appendChild(img);
+      } else {
+        right.innerHTML = "<div class='text-danger'>No Fire Detected</div>";
+      }
+      resultText.innerHTML = `<b>Fire:</b> ${data.fire} &nbsp; <b>Confidence:</b> ${data.fire_confidence}% &nbsp; <b>Humans:</b> ${data.human_count}`;
+      resultBox.style.display = "block";
+    } else {
+      // ensure any previous job is cancelled (defensive)
+      if (currentJobId) {
+        await cancelCurrentJob();
+      }
+      cancelBtn.disabled = false;
+      const fd = new FormData();
+      fd.append("video", currentFile);
+      const resp = await fetch("/upload_video", { method: "POST", body: fd });
+      const j = await resp.json();
+      if (j.job_id) {
+        currentJobId = j.job_id;
+        if (streamImg) { streamImg.remove(); }
+        streamImg = document.createElement("img");
+        streamImg.src = `/stream/${currentJobId}`;
+        streamImg.alt = "Live stream";
+        streamImg.style.maxWidth = "100%";
+        right.innerHTML = "";
+        right.appendChild(streamImg);
+
+        // show result box though it will be updated per frame
+        resultText.innerHTML = "Waiting for frames...";
+        resultBox.style.display = "block";
+        pollStatus();
+      } else {
+        right.innerHTML = "<div class='text-danger'>Failed to queue video.</div>";
+        cancelBtn.disabled = true;
+      }
+    }
+  });
+
+  cancelBtn.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    cancelBtn.disabled = true;
+    await fetch(`/cancel_job/${currentJobId}`, { method: "POST" });
+    right.innerHTML = `<div class='text-warning'>Cancellation requested.</div>`;
+    currentJobId = null;
+    if (streamImg) { streamImg.remove(); streamImg = null; }
+  });
+
+  async function pollStatus() {
+    if (!currentJobId) return;
+    try {
+      const r = await fetch(`/job_status/${currentJobId}`);
+      if (r.status === 404) {
+        right.innerHTML = "<div class='text-danger'>Job not found.</div>";
+        cancelBtn.disabled = true;
+        return;
+      }
+      const s = await r.json();
+
+      // update per-frame metadata if available
+      if (s.latest_meta) {
+        const m = s.latest_meta;
+        resultText.innerHTML = `<b>Fire:</b> ${m.fire} &nbsp; <b>Confidence:</b> ${m.fire_confidence}% &nbsp; <b>Humans:</b> ${m.humans}`;
+        resultBox.style.display = "block";
+      }
+
+      if (s.status === "done") {
+        cancelBtn.disabled = true;
+        if (streamImg) { streamImg.remove(); streamImg = null; }
+        if (s.output_path) {
+          const url = "/" + s.output_path.replace(/^\/+/, '');
+          const vid = document.createElement("video");
+          vid.src = url;
+          vid.controls = true;
+          right.innerHTML = "";
+          right.appendChild(vid);
+          // final meta already shown
+        } else {
+          right.innerHTML = "<div class='text-danger'>Processing finished but no output found.</div>";
+        }
+        currentJobId = null;
+        return;
+      } else if (s.status === "error") {
+        cancelBtn.disabled = true;
+        right.innerHTML = `<div class='text-danger'>Error: ${s.message}</div>`;
+        resultText.innerHTML = `<b>Error:</b> ${s.message}`;
+        resultBox.style.display = "block";
+        currentJobId = null;
+        return;
+      } else if (s.status === "canceled") {
+        cancelBtn.disabled = true;
+        right.innerHTML = `<div class='text-warning'>Job canceled.</div>`;
+        resultText.innerHTML = `<b>Canceled</b>`;
+        resultBox.style.display = "block";
+        currentJobId = null;
+        return;
+      } else {
+        // queued / running - continue polling
+        setTimeout(pollStatus, 1200);
+      }
+    } catch (e) {
+      right.innerHTML = `<div class='text-danger'>Polling failed: ${e}</div>`;
+      cancelBtn.disabled = true;
+      currentJobId = null;
+    }
+  }
+</script>
+</body>
+</html>
