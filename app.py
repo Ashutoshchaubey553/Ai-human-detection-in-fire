@@ -10,6 +10,9 @@ from werkzeug.utils import secure_filename
 import cv2
 import numpy as np
 from tensorflow.keras.models import load_model
+import h5py
+import json
+import shutil
 from PIL import Image
 import io
 import imutils
@@ -43,9 +46,34 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # -------------------------
 # Load models (fail early if missing)
 # -------------------------
+def load_model_compat(path):
+    """Load a Keras H5 model with cross-version compatibility.
+    Patches 'batch_shape' -> 'batch_input_shape' if needed (TF version mismatch).
+    """
+    try:
+        return load_model(str(path), compile=False)
+    except TypeError as e:
+        if 'batch_shape' not in str(e):
+            raise
+        print(f"[compat] Patching model config for batch_shape compatibility...")
+        tmp_path = str(path) + ".compat.h5"
+        shutil.copy(str(path), tmp_path)
+        try:
+            with h5py.File(tmp_path, 'r+') as f:
+                if 'model_config' in f.attrs:
+                    cfg = f.attrs['model_config']
+                    if isinstance(cfg, bytes):
+                        cfg = cfg.decode('utf-8')
+                    cfg = cfg.replace('"batch_shape"', '"batch_input_shape"')
+                    f.attrs['model_config'] = cfg.encode('utf-8')
+            return load_model(tmp_path, compile=False)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
 if not FIRE_MODEL_PATH.exists():
     raise FileNotFoundError(f"Fire model not found: {FIRE_MODEL_PATH}")
-fire_model = load_model(str(FIRE_MODEL_PATH))
+fire_model = load_model_compat(FIRE_MODEL_PATH)
 
 if not (YOLO_CFG.exists() and YOLO_WEIGHTS.exists() and YOLO_NAMES.exists()):
     raise FileNotFoundError("YOLO cfg/weights/names files not found in models/")
