@@ -1,0 +1,27 @@
+# render.yaml — Render Blueprint for Fire Detection Flask App
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: fire-human-detection-app
+    runtime: python
+    region: oregon          # or: singapore, frankfurt, ohio, virginia
+    plan: starter           # free tier; upgrade to "standard" for more RAM/CPU
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --config gunicorn_config.py
+
+    envVars:
+      - key: TF_ENABLE_ONEDNN_OPTS
+        value: "0"
+      - key: TF_CPP_MIN_LOG_LEVEL
+        value: "2"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+    # Render free tier has a 500 MB ephemeral disk — outputs are temporary
+    # Upgrade to a paid plan and add a persistent disk for permanent storage
+    disk:
+      name: output-storage
+      mountPath: /opt/render/project/src/static/output
+      sizeGB: 1
