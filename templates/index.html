@@ -4,310 +4,828 @@
   <meta charset="utf-8" />
   <title>Fire & Human Detection — Live Preview</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="End-to-End CNN-Based System for Human Detection in Fire using Flask. Upload images, videos or use live webcam." />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    body { background:#f6f8fa; }
-    .preview {
-      min-height:340px;
-      border-radius:8px;
-      background:#fff;
-      border:2px dashed #ddd;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:8px;
-    }
-    img, video { max-width:100%; border-radius:6px; }
-    #resultBox{ display:none; }
-    .small-muted { font-size:0.9rem; color:#666; }
-    /* tighten controls and align buttons with inputs */
-    .controls-row .form-control, .controls-row .form-select { height: calc(2.4rem + 2px); }
-    /* keep everything on one line on larger screens, stack on small */
-    @media (min-width: 768px) {
-      .controls-row { align-items: end; }
-    }
-    @media (max-width: 767px) {
-      .controls-row .col-auto { display:block; width:100%; margin-bottom:.5rem; }
-      .controls-row .col { width:100%; margin-bottom:.5rem; }
-      .controls-row .btn { width:49%; }
+    :root {
+      --fire-red:    #e84040;
+      --fire-orange: #f97316;
+      --safe-green:  #22c55e;
+      --bg-dark:     #0f1117;
+      --bg-card:     #1a1d27;
+      --bg-panel:    #22263a;
+      --border:      #2e3350;
+      --text-main:   #e8eaf0;
+      --text-muted:  #8891b2;
+      --accent-blue: #4f8ef7;
     }
 
-    /* --- Heading & Title Colors (added) --- */
-    h3.page-title {
-      color: #d9534f; /* fire-themed red */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      background: linear-gradient(135deg, #1a0a00 0%, #0f1117 50%, #001a3a 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .app-header .flame { font-size: 2rem; animation: flicker 1.5s ease-in-out infinite alternate; }
+    @keyframes flicker {
+      0%   { text-shadow: 0 0 6px #f97316, 0 0 20px #e84040; transform: scale(1); }
+      100% { text-shadow: 0 0 12px #f97316, 0 0 40px #e84040; transform: scale(1.08); }
+    }
+    .app-header h1 {
+      font-size: 1.1rem;
       font-weight: 700;
-      text-shadow: 0 1px 0 rgba(0,0,0,0.02);
+      background: linear-gradient(90deg, #f97316, #e84040, #4f8ef7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.3;
+    }
+    .app-header .subtitle {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 400;
+      -webkit-text-fill-color: var(--text-muted);
     }
 
-    h6.section-title {
-      color: #0d6efd; /* bootstrap blue */
+    /* ── Main layout ── */
+    .main-wrap { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+
+    /* ── Mode tabs ── */
+    .mode-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+    .mode-tab {
+      padding: 9px 20px;
+      border-radius: 8px 8px 0 0;
+      background: transparent;
+      border: 1px solid transparent;
+      border-bottom: none;
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .mode-tab:hover { color: var(--text-main); background: var(--bg-panel); }
+    .mode-tab.active {
+      color: var(--text-main);
+      background: var(--bg-card);
+      border-color: var(--border);
+      border-bottom: 2px solid var(--fire-orange);
+    }
+
+    /* ── Controls bar ── */
+    .controls-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+    }
+    .controls-bar label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; display: block; }
+
+    .file-input-wrap { flex: 1; min-width: 200px; }
+    .file-input-wrap input[type=file] {
+      width: 100%;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.85rem;
+    }
+    .file-input-wrap input[type=file]::file-selector-button {
+      background: var(--accent-blue);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+
+    /* ── Buttons ── */
+    .btn-fire {
+      background: linear-gradient(135deg, var(--fire-orange), var(--fire-red));
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 22px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-fire:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-fire:disabled { opacity: .45; transform: none; cursor: not-allowed; }
+
+    .btn-outline-cancel {
+      background: transparent;
+      color: var(--fire-red);
+      border: 1px solid var(--fire-red);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-outline-cancel:hover { background: rgba(232,64,64,.12); }
+    .btn-outline-cancel:disabled { opacity: .3; cursor: not-allowed; }
+
+    .btn-camera {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 22px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-camera:hover { filter: brightness(1.12); transform: translateY(-1px); }
+    .btn-camera.stop {
+      background: linear-gradient(135deg, var(--fire-orange), var(--fire-red));
+    }
+    .btn-camera:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Preview panels ── */
+    .panels-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .panels-row { grid-template-columns: 1fr; } }
+
+    .panel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-title {
+      padding: 10px 16px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .panel-title .dot.live {
+      background: var(--safe-green);
+      animation: pulse-dot 1s ease infinite;
+    }
+    .panel-title .dot.fire-dot {
+      background: var(--fire-red);
+      animation: pulse-dot 0.6s ease infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .5; transform: scale(0.7); }
+    }
+
+    .panel-body {
+      min-height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      position: relative;
+    }
+    .panel-body img,
+    .panel-body video { max-width: 100%; border-radius: 8px; max-height: 420px; object-fit: contain; }
+    .panel-placeholder {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    .panel-placeholder .icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+    /* ── Webcam specific ── */
+    #cameraFeed {
+      width: 100%;
+      border-radius: 8px;
+      max-height: 420px;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror effect */
+    }
+    #captureCanvas { display: none; }
+
+    /* ── FPS / status badge ── */
+    .fps-badge {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: rgba(0,0,0,.6);
+      backdrop-filter: blur(4px);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.75rem;
+      color: var(--safe-green);
       font-weight: 600;
     }
 
-    .preview-heading {
-      color: #6f42c1; /* purple accent for preview labels if needed */
-      font-weight: 600;
+    /* ── Result bar ── */
+    .result-bar {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      margin-top: 16px;
+      display: none;
+      gap: 24px;
+      align-items: center;
+      flex-wrap: wrap;
     }
+    .result-bar.visible { display: flex; }
 
-    /* subtle responsive adjustment for title size */
-    @media (max-width: 575px) {
-      h3.page-title { font-size: 1.05rem; }
+    .stat-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-panel);
+      border-radius: 8px;
+      padding: 8px 16px;
     }
+    .stat-chip .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+    .stat-chip .stat-val   { font-size: 1.05rem; font-weight: 700; }
+    .stat-chip .stat-icon  { font-size: 1.3rem; }
 
-   /* Make form labels bold */
-   .form-label {
-      font-weight: 700 !important;
-   }
+    .stat-chip.fire-yes { border-left: 3px solid var(--fire-red); }
+    .stat-chip.fire-no  { border-left: 3px solid var(--safe-green); }
+
+    /* ── Progress ── */
+    .progress-wrap { margin-top: 10px; }
+    .progress-bar-track {
+      background: var(--bg-panel);
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--fire-orange), var(--fire-red));
+      border-radius: 99px;
+      transition: width .4s ease;
+    }
+    .progress-text { font-size: 0.78rem; color: var(--text-muted); margin-top: 5px; }
+
+    /* ── Camera permission error ── */
+    .cam-error {
+      background: rgba(232,64,64,.1);
+      border: 1px solid rgba(232,64,64,.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #f87171;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .cam-error.show { display: block; }
   </style>
 </head>
-<body class="p-4">
-  <div class="container">
-   <h3 class="mb-3 text-center page-title">
-  🔥 End-to-End CNN-Based System for Human Detection in Fire Using a Flask Web Application
-</h3>
+<body>
 
-
-    <!-- SINGLE LINE CONTROLS: Input Type | File | Process | Cancel -->
-    <div class="row g-2 controls-row mb-3">
-      <div class="col-auto">
-        <label class="form-label mb-0 small-muted">Input Type</label>
-        <select id="inputType" class="form-select">
-          <option value="image">Image</option>
-          <option value="video" selected>Video</option>
-        </select>
-      </div>
-
-      <div class="col">
-        <label class="form-label mb-0 small-muted">Choose file</label>
-        <input id="fileInput" type="file" class="form-control" />
-      </div>
-
-      <div class="col-auto d-flex gap-2">
-        <div class="d-grid" style="min-width:110px;">
-          <button id="processBtn" class="btn btn-primary">Process</button>
-        </div>
-        <div class="d-grid" style="min-width:110px;">
-          <button id="cancelBtn" class="btn btn-outline-danger" disabled>Cancel Job</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- PREVIEWS -->
-    <div class="row">
-      <div class="col-md-6">
-        <h6 class="section-title">Original</h6>
-        <div id="left" class="preview">No file selected</div>
-      </div>
-
-      <div class="col-md-6">
-        <h6 class="section-title">Annotated Output</h6>
-        <div id="right" class="preview">Output will appear here</div>
-        <div id="progressArea" class="mt-2 small-muted"></div>
-      </div>
-    </div>
-
-    <!-- RESULT -->
-    <div id="resultBox" class="mt-3">
-      <div id="resultText" class="alert alert-info"></div>
+  <!-- Header -->
+  <div class="app-header">
+    <span class="flame">🔥</span>
+    <div>
+      <h1>End-to-End CNN — Human Detection in Fire<br><span class="subtitle">Fire Classifier · YOLOv3 Human Detection · Live Webcam</span></h1>
     </div>
   </div>
 
+  <div class="main-wrap">
+
+    <!-- Mode tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="tabImage" onclick="switchTab('image')">🖼️ Image</button>
+      <button class="mode-tab" id="tabVideo" onclick="switchTab('video')">🎬 Video</button>
+      <button class="mode-tab" id="tabCamera" onclick="switchTab('camera')">📷 Live Camera</button>
+    </div>
+
+    <!-- ── IMAGE / VIDEO controls ── -->
+    <div id="uploadControls">
+      <div class="controls-bar">
+        <div class="file-input-wrap">
+          <label id="fileLabel">Choose image</label>
+          <input id="fileInput" type="file" accept="image/*" />
+        </div>
+        <button class="btn-fire" id="processBtn">▶ Process</button>
+        <button class="btn-outline-cancel" id="cancelBtn" disabled>✕ Cancel</button>
+      </div>
+    </div>
+
+    <!-- ── CAMERA controls ── -->
+    <div id="cameraControls" style="display:none;">
+      <div class="controls-bar">
+        <div style="flex:1;">
+          <label>Webcam Detection Mode</label>
+          <div style="font-size:0.82rem; color:var(--text-muted);">Frames are sent to the server every ~1s for fire &amp; human analysis</div>
+        </div>
+        <button class="btn-camera" id="startCamBtn" onclick="startCamera()">📷 Start Camera</button>
+        <button class="btn-outline-cancel" id="stopCamBtn" style="display:none;" onclick="stopCamera()">■ Stop</button>
+      </div>
+      <div class="cam-error" id="camError">⚠️ Camera access denied. Please allow camera permission in your browser and try again.</div>
+    </div>
+
+    <!-- Panels -->
+    <div class="panels-row">
+      <!-- Left: Original -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span class="dot" id="leftDot"></span>
+          <span id="leftTitle">Original Input</span>
+        </div>
+        <div class="panel-body" id="leftPanel">
+          <div class="panel-placeholder">
+            <div class="icon">📂</div>
+            <div>No file selected</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Annotated Output -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span class="dot" id="rightDot"></span>
+          <span id="rightTitle">Annotated Output</span>
+        </div>
+        <div class="panel-body" id="rightPanel">
+          <div class="panel-placeholder">
+            <div class="icon">🔍</div>
+            <div>Output will appear here</div>
+          </div>
+          <span class="fps-badge" id="fpsBadge" style="display:none;">⚡ Live</span>
+        </div>
+        <div class="progress-wrap" id="progressWrap" style="display:none; padding: 0 14px 14px;">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+          </div>
+          <div class="progress-text" id="progressText">Processing...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result bar -->
+    <div class="result-bar" id="resultBar">
+      <div class="stat-chip" id="fireChip">
+        <span class="stat-icon">🔥</span>
+        <div>
+          <div class="stat-label">Fire Detected</div>
+          <div class="stat-val" id="fireVal">—</div>
+        </div>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-icon">📊</span>
+        <div>
+          <div class="stat-label">Confidence</div>
+          <div class="stat-val" id="confVal">—</div>
+        </div>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-icon">🧑</span>
+        <div>
+          <div class="stat-label">Humans in Frame</div>
+          <div class="stat-val" id="humanVal">—</div>
+        </div>
+      </div>
+      <div class="stat-chip" id="modeChip" style="margin-left:auto;">
+        <span class="stat-icon" id="modeIcon">📷</span>
+        <div>
+          <div class="stat-label">Mode</div>
+          <div class="stat-val" id="modeVal">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden canvas for webcam capture -->
+    <canvas id="captureCanvas"></canvas>
+
+  </div><!-- /main-wrap -->
+
 <script>
-  const inputType = document.getElementById("inputType");
-  const fileInput = document.getElementById("fileInput");
-  const left = document.getElementById("left");
-  const right = document.getElementById("right");
-  const processBtn = document.getElementById("processBtn");
-  const cancelBtn = document.getElementById("cancelBtn");
-  const resultBox = document.getElementById("resultBox");
-  const resultText = document.getElementById("resultText");
-  const progressArea = document.getElementById("progressArea");
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+let currentMode   = 'image';   // 'image' | 'video' | 'camera'
+let currentFile   = null;
+let currentJobId  = null;
+let streamImg     = null;
 
-  let currentFile = null;
-  let currentJobId = null;
-  let streamImg = null;
+// Camera state
+let cameraStream    = null;
+let cameraRunning   = false;
+let cameraLoopId    = null;
+let frameCount      = 0;
+let lastFrameTime   = 0;
+let currentFPS      = 0;
 
-  // helper: cancel current job (if any) and update UI
-  async function cancelCurrentJob() {
-    if (!currentJobId) return;
-    try {
-      cancelBtn.disabled = true;
-      await fetch(`/cancel_job/${currentJobId}`, { method: "POST" });
-      // show a quick message on right panel
-      right.innerHTML = `<div class="text-warning">Cancellation requested for job ${currentJobId}.</div>`;
-    } catch (e) {
-      console.warn("Cancel request failed:", e);
-      right.innerHTML = `<div class="text-warning">Cancellation request failed.</div>`;
-    } finally {
-      // reset local job state (server may still mark it canceled)
-      currentJobId = null;
-      if (streamImg) { streamImg.remove(); streamImg = null; }
+// Elements
+const fileInput    = document.getElementById('fileInput');
+const fileLabel    = document.getElementById('fileLabel');
+const leftPanel    = document.getElementById('leftPanel');
+const rightPanel   = document.getElementById('rightPanel');
+const processBtn   = document.getElementById('processBtn');
+const cancelBtn    = document.getElementById('cancelBtn');
+const resultBar    = document.getElementById('resultBar');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const fpsBadge     = document.getElementById('fpsBadge');
+const leftDot      = document.getElementById('leftDot');
+const rightDot     = document.getElementById('rightDot');
+const leftTitle    = document.getElementById('leftTitle');
+const rightTitle   = document.getElementById('rightTitle');
+const camError     = document.getElementById('camError');
+const startCamBtn  = document.getElementById('startCamBtn');
+const stopCamBtn   = document.getElementById('stopCamBtn');
+const captureCanvas = document.getElementById('captureCanvas');
+
+// ─────────────────────────────────────────────
+// Tab switching
+// ─────────────────────────────────────────────
+function switchTab(mode) {
+  stopCamera();
+  cancelCurrentJob();
+
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+
+  document.getElementById('uploadControls').style.display = (mode !== 'camera') ? '' : 'none';
+  document.getElementById('cameraControls').style.display = (mode === 'camera') ? '' : 'none';
+
+  // Update file input accept
+  if (mode === 'image') {
+    fileInput.accept = 'image/*';
+    fileLabel.textContent = 'Choose image';
+    leftTitle.textContent = 'Original Image';
+    rightTitle.textContent = 'Annotated Output';
+  } else if (mode === 'video') {
+    fileInput.accept = 'video/*';
+    fileLabel.textContent = 'Choose video';
+    leftTitle.textContent = 'Original Video';
+    rightTitle.textContent = 'Annotated Output (Live Stream)';
+  } else {
+    leftTitle.textContent = 'Live Webcam Feed';
+    rightTitle.textContent = 'Annotated Output';
+  }
+
+  resetPanels();
+  camError.classList.remove('show');
+}
+
+function resetPanels() {
+  leftPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">${currentMode === 'camera' ? '📷' : '📂'}</div><div>${currentMode === 'camera' ? 'Camera not started' : 'No file selected'}</div></div>`;
+  rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">🔍</div><div>Output will appear here</div></div><span class="fps-badge" id="fpsBadge" style="display:none;">⚡ Live</span>`;
+  resultBar.classList.remove('visible');
+  progressWrap.style.display = 'none';
+  leftDot.className = 'dot';
+  rightDot.className = 'dot';
+  fileInput.value = '';
+  currentFile = null;
+}
+
+// ─────────────────────────────────────────────
+// File input handler
+// ─────────────────────────────────────────────
+fileInput.addEventListener('change', async () => {
+  if (currentJobId) await cancelCurrentJob();
+  resultBar.classList.remove('visible');
+  rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">🔍</div><div>Output will appear here</div></div>`;
+  progressWrap.style.display = 'none';
+
+  if (!fileInput.files.length) {
+    leftPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">📂</div><div>No file selected</div></div>`;
+    currentFile = null;
+    return;
+  }
+  currentFile = fileInput.files[0];
+  leftDot.className = 'dot live';
+
+  if (currentMode === 'image') {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(currentFile);
+    leftPanel.innerHTML = '';
+    leftPanel.appendChild(img);
+  } else {
+    const vid = document.createElement('video');
+    vid.src = URL.createObjectURL(currentFile);
+    vid.controls = true;
+    leftPanel.innerHTML = '';
+    leftPanel.appendChild(vid);
+  }
+});
+
+// ─────────────────────────────────────────────
+// Process button
+// ─────────────────────────────────────────────
+processBtn.addEventListener('click', async () => {
+  if (!currentFile) { alert('Choose a file first'); return; }
+  resultBar.classList.remove('visible');
+
+  if (currentMode === 'image') {
+    rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">⏳</div><div>Analysing image...</div></div>`;
+    rightDot.className = 'dot live';
+    const fd = new FormData();
+    fd.append('image', currentFile);
+    const resp = await fetch('/predict_image', { method: 'POST', body: fd });
+    const data = await resp.json();
+    rightDot.className = 'dot';
+    if (data.output_image) {
+      const img = document.createElement('img');
+      img.src = '/' + data.output_image + '?t=' + Date.now();
+      rightPanel.innerHTML = '';
+      rightPanel.appendChild(img);
+    }
+    showResult(data.fire, data.fire_confidence, data.human_count, 'Image');
+  } else {
+    // Video upload
+    if (currentJobId) await cancelCurrentJob();
+    cancelBtn.disabled = false;
+    rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">⏳</div><div>Uploading video...</div></div>`;
+    progressWrap.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Uploading...';
+    rightDot.className = 'dot live';
+
+    const fd = new FormData();
+    fd.append('video', currentFile);
+    const resp = await fetch('/upload_video', { method: 'POST', body: fd });
+    const j = await resp.json();
+
+    if (j.job_id) {
+      currentJobId = j.job_id;
+      streamImg = document.createElement('img');
+      streamImg.src = `/stream/${currentJobId}`;
+      streamImg.style.maxWidth = '100%';
+      streamImg.style.borderRadius = '8px';
+      rightPanel.innerHTML = '';
+      rightPanel.appendChild(streamImg);
+      document.getElementById('fpsBadge') && (document.getElementById('fpsBadge').style.display = '');
+      resultBar.classList.add('visible');
+      document.getElementById('modeVal').textContent = 'Video';
+      document.getElementById('modeIcon').textContent = '🎬';
+      pollStatus();
+    } else {
+      rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">❌</div><div>Failed to queue video</div></div>`;
       cancelBtn.disabled = true;
     }
   }
+});
 
-  // When user switches input type, auto-cancel any running job
-  inputType.addEventListener("change", async () => {
-    if (currentJobId) {
-      await cancelCurrentJob();
-    }
-    // clear UI
-    left.innerHTML = "No file selected";
-    right.innerHTML = "Output will appear here";
-    resultBox.style.display = "none";
-    fileInput.value = "";
-    currentFile = null;
-  });
+cancelBtn.addEventListener('click', () => cancelCurrentJob());
 
-  // When user selects a new file, auto-cancel running job (if any)
-  fileInput.addEventListener("change", async (e) => {
-    // if a video job is running, cancel it before switching the preview
-    if (currentJobId) {
-      await cancelCurrentJob();
-    }
-    resultBox.style.display = "none";
-    right.innerHTML = "Output will appear here";
-    progressArea.innerHTML = "";
-    if (!fileInput.files.length) {
-      left.innerHTML = "No file selected";
-      currentFile = null;
-      return;
-    }
-    currentFile = fileInput.files[0];
-    if (inputType.value === "image") {
-      const img = document.createElement("img");
-      img.src = URL.createObjectURL(currentFile);
-      left.innerHTML = "";
-      left.appendChild(img);
-    } else {
-      const vid = document.createElement("video");
-      vid.src = URL.createObjectURL(currentFile);
-      vid.controls = true;
-      left.innerHTML = "";
-      left.appendChild(vid);
-    }
-  });
-
-  processBtn.addEventListener("click", async () => {
-    if (!currentFile) { alert("Choose a file first"); return; }
-    resultBox.style.display = "none";
-    right.innerHTML = "<div>Processing... please wait</div>";
-    progressArea.innerHTML = "";
-
-    if (inputType.value === "image") {
-      const fd = new FormData();
-      fd.append("image", currentFile);
-      const resp = await fetch("/predict_image", { method: "POST", body: fd });
-      const data = await resp.json();
-      if (data.output_image) {
-        const img = document.createElement("img");
-        img.src = "/" + data.output_image;
-        right.innerHTML = "";
-        right.appendChild(img);
-      } else {
-        right.innerHTML = "<div class='text-danger'>No Fire Detected</div>";
-      }
-      resultText.innerHTML = `<b>Fire:</b> ${data.fire} &nbsp; <b>Confidence:</b> ${data.fire_confidence}% &nbsp; <b>Humans:</b> ${data.human_count}`;
-      resultBox.style.display = "block";
-    } else {
-      // ensure any previous job is cancelled (defensive)
-      if (currentJobId) {
-        await cancelCurrentJob();
-      }
-      cancelBtn.disabled = false;
-      const fd = new FormData();
-      fd.append("video", currentFile);
-      const resp = await fetch("/upload_video", { method: "POST", body: fd });
-      const j = await resp.json();
-      if (j.job_id) {
-        currentJobId = j.job_id;
-        if (streamImg) { streamImg.remove(); }
-        streamImg = document.createElement("img");
-        streamImg.src = `/stream/${currentJobId}`;
-        streamImg.alt = "Live stream";
-        streamImg.style.maxWidth = "100%";
-        right.innerHTML = "";
-        right.appendChild(streamImg);
-
-        // show result box though it will be updated per frame
-        resultText.innerHTML = "Waiting for frames...";
-        resultBox.style.display = "block";
-        pollStatus();
-      } else {
-        right.innerHTML = "<div class='text-danger'>Failed to queue video.</div>";
-        cancelBtn.disabled = true;
-      }
-    }
-  });
-
-  cancelBtn.addEventListener("click", async () => {
-    if (!currentJobId) return;
+// ─────────────────────────────────────────────
+// Job helpers
+// ─────────────────────────────────────────────
+async function cancelCurrentJob() {
+  if (!currentJobId) return;
+  try {
     cancelBtn.disabled = true;
-    await fetch(`/cancel_job/${currentJobId}`, { method: "POST" });
-    right.innerHTML = `<div class='text-warning'>Cancellation requested.</div>`;
+    await fetch(`/cancel_job/${currentJobId}`, { method: 'POST' });
+    rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">🚫</div><div>Job cancelled</div></div>`;
+  } catch(e) { }
+  finally {
     currentJobId = null;
     if (streamImg) { streamImg.remove(); streamImg = null; }
-  });
-
-  async function pollStatus() {
-    if (!currentJobId) return;
-    try {
-      const r = await fetch(`/job_status/${currentJobId}`);
-      if (r.status === 404) {
-        right.innerHTML = "<div class='text-danger'>Job not found.</div>";
-        cancelBtn.disabled = true;
-        return;
-      }
-      const s = await r.json();
-
-      // update per-frame metadata if available
-      if (s.latest_meta) {
-        const m = s.latest_meta;
-        resultText.innerHTML = `<b>Fire:</b> ${m.fire} &nbsp; <b>Confidence:</b> ${m.fire_confidence}% &nbsp; <b>Humans:</b> ${m.humans}`;
-        resultBox.style.display = "block";
-      }
-
-      if (s.status === "done") {
-        cancelBtn.disabled = true;
-        if (streamImg) { streamImg.remove(); streamImg = null; }
-        if (s.output_path) {
-          const url = "/" + s.output_path.replace(/^\/+/, '');
-          const vid = document.createElement("video");
-          vid.src = url;
-          vid.controls = true;
-          right.innerHTML = "";
-          right.appendChild(vid);
-          // final meta already shown
-        } else {
-          right.innerHTML = "<div class='text-danger'>Processing finished but no output found.</div>";
-        }
-        currentJobId = null;
-        return;
-      } else if (s.status === "error") {
-        cancelBtn.disabled = true;
-        right.innerHTML = `<div class='text-danger'>Error: ${s.message}</div>`;
-        resultText.innerHTML = `<b>Error:</b> ${s.message}`;
-        resultBox.style.display = "block";
-        currentJobId = null;
-        return;
-      } else if (s.status === "canceled") {
-        cancelBtn.disabled = true;
-        right.innerHTML = `<div class='text-warning'>Job canceled.</div>`;
-        resultText.innerHTML = `<b>Canceled</b>`;
-        resultBox.style.display = "block";
-        currentJobId = null;
-        return;
-      } else {
-        // queued / running - continue polling
-        setTimeout(pollStatus, 1200);
-      }
-    } catch (e) {
-      right.innerHTML = `<div class='text-danger'>Polling failed: ${e}</div>`;
-      cancelBtn.disabled = true;
-      currentJobId = null;
-    }
+    cancelBtn.disabled = true;
+    rightDot.className = 'dot';
+    progressWrap.style.display = 'none';
   }
+}
+
+async function pollStatus() {
+  if (!currentJobId) return;
+  try {
+    const r = await fetch(`/job_status/${currentJobId}`);
+    if (r.status === 404) { rightDot.className = 'dot'; return; }
+    const s = await r.json();
+
+    if (s.latest_meta) {
+      const m = s.latest_meta;
+      showResult(m.fire, m.fire_confidence, m.humans, 'Video');
+    }
+    if (s.progress !== undefined) {
+      progressFill.style.width = s.progress + '%';
+      progressText.textContent = `Processing... ${s.progress}%`;
+    }
+    if (s.status === 'done') {
+      cancelBtn.disabled = true;
+      rightDot.className = 'dot';
+      progressFill.style.width = '100%';
+      progressText.textContent = 'Done!';
+      if (streamImg) { streamImg.remove(); streamImg = null; }
+      if (s.output_path) {
+        const url = '/' + s.output_path.replace(/^\/+/, '');
+        const vid = document.createElement('video');
+        vid.src = url; vid.controls = true;
+        rightPanel.innerHTML = '';
+        rightPanel.appendChild(vid);
+      }
+      currentJobId = null;
+    } else if (s.status === 'error') {
+      cancelBtn.disabled = true;
+      rightDot.className = 'dot';
+      rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">❌</div><div>Error: ${s.message}</div></div>`;
+      currentJobId = null;
+    } else if (s.status === 'canceled') {
+      cancelBtn.disabled = true; rightDot.className = 'dot'; currentJobId = null;
+    } else {
+      setTimeout(pollStatus, 1200);
+    }
+  } catch(e) { rightDot.className = 'dot'; cancelBtn.disabled = true; currentJobId = null; }
+}
+
+// ─────────────────────────────────────────────
+// Shared result display
+// ─────────────────────────────────────────────
+function showResult(fire, conf, humans, mode) {
+  resultBar.classList.add('visible');
+  document.getElementById('fireVal').textContent = fire ? '🔥 YES' : '✅ NO';
+  document.getElementById('confVal').textContent = (typeof conf === 'number' ? conf.toFixed(2) : conf) + '%';
+  document.getElementById('humanVal').textContent = humans;
+  document.getElementById('modeVal').textContent = mode;
+  document.getElementById('modeIcon').textContent = mode === 'Image' ? '🖼️' : mode === 'Video' ? '🎬' : '📷';
+
+  const chip = document.getElementById('fireChip');
+  chip.classList.toggle('fire-yes', !!fire);
+  chip.classList.toggle('fire-no', !fire);
+
+  // Flash right panel border on fire
+  const rightCard = rightPanel.closest('.panel-card');
+  if (fire) {
+    rightCard.style.borderColor = 'rgba(232,64,64,0.7)';
+    rightDot.className = 'dot fire-dot';
+  } else {
+    rightCard.style.borderColor = 'rgba(34,197,94,0.5)';
+    rightDot.className = 'dot live';
+  }
+}
+
+// ─────────────────────────────────────────────
+// 📷 LIVE CAMERA
+// ─────────────────────────────────────────────
+async function startCamera() {
+  camError.classList.remove('show');
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'environment' },
+      audio: false
+    });
+  } catch(err) {
+    camError.classList.add('show');
+    return;
+  }
+
+  // Show video in left panel
+  leftPanel.innerHTML = '';
+  const videoEl = document.createElement('video');
+  videoEl.id = 'cameraFeed';
+  videoEl.autoplay = true;
+  videoEl.playsInline = true;
+  videoEl.muted = true;
+  videoEl.srcObject = cameraStream;
+  leftPanel.appendChild(videoEl);
+  leftDot.className = 'dot live';
+
+  rightPanel.innerHTML = `<div class="panel-placeholder"><div class="icon">⏳</div><div>Waiting for first frame...</div></div><span id="fpsBadge" class="fps-badge" style="display:none;">⚡ Live</span>`;
+
+  startCamBtn.style.display = 'none';
+  stopCamBtn.style.display = '';
+  cameraRunning = true;
+  frameCount = 0;
+
+  // Small delay for camera to warm up
+  setTimeout(() => captureLoop(videoEl), 800);
+}
+
+function stopCamera() {
+  cameraRunning = false;
+  if (cameraLoopId) { clearTimeout(cameraLoopId); cameraLoopId = null; }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  startCamBtn.style.display = '';
+  stopCamBtn.style.display = 'none';
+  leftDot.className = 'dot';
+  rightDot.className = 'dot';
+  fpsBadge && (fpsBadge.style.display = 'none');
+  if (currentMode === 'camera') {
+    resultBar.classList.remove('visible');
+    resetPanels();
+  }
+}
+
+async function captureLoop(videoEl) {
+  if (!cameraRunning) return;
+
+  // Check video is ready
+  if (videoEl.readyState < 2) {
+    cameraLoopId = setTimeout(() => captureLoop(videoEl), 300);
+    return;
+  }
+
+  const W = videoEl.videoWidth  || 640;
+  const H = videoEl.videoHeight || 480;
+  captureCanvas.width  = W;
+  captureCanvas.height = H;
+  const ctx = captureCanvas.getContext('2d');
+
+  // Mirror the frame to match the preview
+  ctx.save();
+  ctx.translate(W, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(videoEl, 0, 0, W, H);
+  ctx.restore();
+
+  captureCanvas.toBlob(async (blob) => {
+    if (!cameraRunning || !blob) return;
+
+    const tStart = performance.now();
+    try {
+      const fd = new FormData();
+      fd.append('image', blob, 'frame.jpg');
+      const resp = await fetch('/predict_image', { method: 'POST', body: fd });
+      const data = await resp.json();
+
+      if (!cameraRunning) return;
+
+      // Show annotated frame
+      if (data.output_image) {
+        let annotImg = rightPanel.querySelector('img.annotated-cam');
+        if (!annotImg) {
+          rightPanel.innerHTML = '';
+          annotImg = document.createElement('img');
+          annotImg.className = 'annotated-cam';
+          annotImg.style.maxWidth = '100%';
+          annotImg.style.borderRadius = '8px';
+          rightPanel.appendChild(annotImg);
+
+          // FPS badge
+          const badge = document.createElement('span');
+          badge.id = 'fpsBadge';
+          badge.className = 'fps-badge';
+          rightPanel.appendChild(badge);
+        }
+        annotImg.src = '/' + data.output_image + '?t=' + Date.now();
+
+        // Update FPS
+        const elapsed = performance.now() - tStart;
+        currentFPS = (1000 / elapsed).toFixed(1);
+        const badge2 = rightPanel.querySelector('.fps-badge');
+        if (badge2) { badge2.style.display = ''; badge2.textContent = `${currentFPS} FPS`; }
+
+        rightDot.className = data.fire ? 'dot fire-dot' : 'dot live';
+      }
+
+      showResult(data.fire, data.fire_confidence, data.human_count, 'Camera');
+      frameCount++;
+
+    } catch(e) {
+      console.warn('Frame inference failed:', e);
+    }
+
+    // Schedule next frame (min 800ms to avoid overloading server)
+    const inferenceTime = performance.now() - tStart;
+    const delay = Math.max(800 - inferenceTime, 200);
+    cameraLoopId = setTimeout(() => captureLoop(videoEl), delay);
+
+  }, 'image/jpeg', 0.75);
+}
 </script>
 </body>
 </html>
