@@ -6,10 +6,10 @@ services:
     name: fire-human-detection-app
     runtime: python
     region: oregon          # or: singapore, frankfurt, ohio, virginia
-    plan: starter           # free tier; upgrade to "standard" for more RAM/CPU
+    plan: starter           # free tier spins down; starter ($7/mo) recommended for RAM
 
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --config gunicorn_config.py
+    buildCommand: bash build.sh
+    startCommand: gunicorn app:app --bind "0.0.0.0:$PORT" --config gunicorn_config.py
 
     envVars:
       - key: TF_ENABLE_ONEDNN_OPTS
@@ -19,8 +19,7 @@ services:
       - key: PYTHONUNBUFFERED
         value: "1"
 
-    # Render free tier has a 500 MB ephemeral disk — outputs are temporary
-    # Upgrade to a paid plan and add a persistent disk for permanent storage
+    # Persistent disk for uploaded/processed output files (requires paid plan)
     disk:
       name: output-storage
       mountPath: /opt/render/project/src/static/output
