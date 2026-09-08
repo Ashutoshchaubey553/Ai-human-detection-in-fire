@@ -46,9 +46,9 @@ gdrive_download() {
 # Make sure sharing is set to "Anyone with the link → Viewer".
 # ──────────────────────────────────────────────────────────────────
 
-YOLO_WEIGHTS_ID="REPLACE_WITH_YOLO_WEIGHTS_FILE_ID"   # yolov3.weights  (~237 MB)
-YOLO_CFG_ID="REPLACE_WITH_YOLO_CFG_FILE_ID"           # yolov3.cfg      (~8 KB)
-COCO_NAMES_ID="REPLACE_WITH_COCO_NAMES_FILE_ID"       # coco.names      (~1 KB)
+YOLO_WEIGHTS_ID="1N13RalYAddLPKnXILhSMVojXL8OtUC_X"   # yolov3.weights  (~237 MB)
+YOLO_CFG_ID="10GxrblhK-KwoavRD6vANYsT0y_CUs2dp"      # yolov3.cfg      (~8 KB)
+COCO_NAMES_ID="1lkM4bD9lGDPm4BolBhODPXnQncJulVr_"    # coco.names      (~1 KB)
 
 # NOTE: fire_detection_model.h5 is already in the repo (committed directly, not LFS)
 # so it does NOT need to be downloaded here.
