@@ -1,26 +1,27 @@
 # gunicorn_config.py
-# Render.com production WSGI config for the Fire Detection Flask app
+# Render production WSGI config for Fire Detection Flask app
 
-import multiprocessing
+import os
 
-# Bind to the PORT env var that Render provides
-bind = "0.0.0.0:10000"
+# Render provides the port via the PORT environment variable
+port = os.environ.get("PORT", "10000")
+bind = f"0.0.0.0:{port}"
 
-# Workers: 1 worker to avoid duplicating the huge YOLO weights in RAM
+# 1 worker to keep RAM usage low with YOLO weights + TensorFlow
 workers = 1
 
-# Threads per worker (handle concurrent requests without extra processes)
+# Threads to handle multiple concurrent requests without extra process memory
 threads = 4
 
-# Increase timeouts – model inference can be slow on CPU
-timeout = 300         # 5 minutes per request
+# Increase timeouts – video processing and model inference can take time on CPU
+timeout = 300
 graceful_timeout = 60
 keepalive = 5
 
-# Logging
+# Logging to stdout/stderr so Render logs capture everything
 accesslog = "-"
-errorlog  = "-"
-loglevel  = "info"
+errorlog = "-"
+loglevel = "info"
 
-# Prevent zombie workers
-preload_app = True
+# Ensure models are cleanly initialized
+preload_app = False

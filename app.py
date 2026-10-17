@@ -20,7 +20,7 @@ import imutils
 # -------------------------
 # Config
 # -------------------------
-BASE_DIR = Path(".")
+BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
 OUTPUT_DIR = BASE_DIR / "static" / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

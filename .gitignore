@@ -17,3 +17,7 @@ archive/
 # Uploaded / output media in static
 static/output/*
 !static/output/.gitkeep
+
+# Windows shortcuts
+*.lnk
+
