@@ -193,5 +193,5 @@ Dataset Link: https://www.kaggle.com/datasets/phylake1337/fire-dataset
 
 
 
-Team VTUPusle.com
+
 
