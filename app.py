@@ -82,38 +82,48 @@ def sanitize_keras_config(cfg_str):
 
 
 def load_model_compat(path):
-    """Load a Keras H5 model with cross-version compatibility (Keras 2 & 3)."""
-    class DTypePolicyFallback:
-        def __init__(self, name="float32", **kwargs):
-            self.name = name
-        def __repr__(self):
-            return self.name
-
-    custom_objects = {
-        "DTypePolicy": DTypePolicyFallback,
-    }
-
+    """Load a Keras H5 model with robust cross-version compatibility (Keras 2 & 3)."""
+    # 1. Try Keras 3 directly (native library format of this model)
     try:
-        return load_model(str(path), compile=False, custom_objects=custom_objects)
-    except Exception as e:
-        print(f"[compat] Initial model load failed ({e}). Patching model_config...")
-        tmp_path = str(path) + ".compat.h5"
-        shutil.copy(str(path), tmp_path)
-        try:
-            with h5py.File(tmp_path, "r+") as f:
-                if "model_config" in f.attrs:
-                    cfg = f.attrs["model_config"]
-                    if isinstance(cfg, bytes):
-                        cfg = cfg.decode("utf-8")
-                    cleaned_cfg = sanitize_keras_config(cfg)
-                    f.attrs["model_config"] = cleaned_cfg.encode("utf-8")
-            return load_model(tmp_path, compile=False, custom_objects=custom_objects)
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
+        import keras
+        print("[model_init] Loading model via Keras 3...")
+        return keras.models.load_model(str(path))
+    except Exception as e1:
+        print(f"[model_init] Keras 3 direct load not available ({e1}), trying tf.keras custom scope...")
+
+    # 2. Try tf.keras with custom_object_scope
+    try:
+        import tensorflow as tf
+        from tensorflow.keras.mixed_precision import Policy
+
+        class DTypePolicy(Policy):
+            def __init__(self, name="float32", **kwargs):
+                super().__init__(name)
+
+        with tf.keras.utils.custom_object_scope({"DTypePolicy": DTypePolicy, "Policy": Policy}):
+            return tf.keras.models.load_model(str(path), compile=False)
+    except Exception as e2:
+        print(f"[model_init] tf.keras custom_object_scope failed ({e2}). Trying patched H5 config...")
+
+    # 3. Patch model_config in H5 file
+    tmp_path = str(path) + ".compat.h5"
+    shutil.copy(str(path), tmp_path)
+    try:
+        with h5py.File(tmp_path, "r+") as f:
+            if "model_config" in f.attrs:
+                cfg = f.attrs["model_config"]
+                if isinstance(cfg, bytes):
+                    cfg = cfg.decode("utf-8")
+                cleaned_cfg = sanitize_keras_config(cfg)
+                f.attrs["model_config"] = cleaned_cfg.encode("utf-8")
+        import tensorflow as tf
+        return tf.keras.models.load_model(tmp_path, compile=False)
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 if not FIRE_MODEL_PATH.exists():
     raise FileNotFoundError(f"Fire model not found: {FIRE_MODEL_PATH}")
