@@ -18,6 +18,11 @@ archive/
 static/output/*
 !static/output/.gitkeep
 
-# Windows shortcuts
-*.lnk
+# Large YOLO weights (auto-downloaded on server startup, exceeds GitHub 100MB limit)
+models/yolov3.weights
+models/*.tmp
 
+# Windows shortcuts & OS files
+*.lnk
+.DS_Store
+Thumbs.db

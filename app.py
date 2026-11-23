@@ -75,6 +75,99 @@ if not FIRE_MODEL_PATH.exists():
     raise FileNotFoundError(f"Fire model not found: {FIRE_MODEL_PATH}")
 fire_model = load_model_compat(FIRE_MODEL_PATH)
 
+def ensure_yolo_files():
+    """Ensure YOLO configuration, class names, and weights exist.
+    If yolov3.weights is missing or an unpulled Git LFS pointer (<100MB),
+    it is automatically downloaded from the official Darknet mirror.
+    """
+    import urllib.request
+
+    # Ensure coco.names
+    if not YOLO_NAMES.exists() or YOLO_NAMES.stat().st_size < 100:
+        print("[model_init] Downloading coco.names...")
+        try:
+            url = "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
+            urllib.request.urlretrieve(url, str(YOLO_NAMES))
+        except Exception as e:
+            print(f"[model_init] Warning: failed to download coco.names: {e}")
+
+    # Ensure yolov3.cfg
+    if not YOLO_CFG.exists() or YOLO_CFG.stat().st_size < 1000:
+        print("[model_init] Downloading yolov3.cfg...")
+        try:
+            url = "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
+            urllib.request.urlretrieve(url, str(YOLO_CFG))
+        except Exception as e:
+            print(f"[model_init] Warning: failed to download yolov3.cfg: {e}")
+
+    # Check yolov3.weights (expected ~248 MB)
+    min_size = 100 * 1024 * 1024
+    needs_download = False
+    if not YOLO_WEIGHTS.exists():
+        needs_download = True
+    else:
+        try:
+            size = YOLO_WEIGHTS.stat().st_size
+            if size < min_size:
+                needs_download = True
+            else:
+                with open(YOLO_WEIGHTS, "rb") as f:
+                    if b"version https://git-lfs" in f.read(50):
+                        needs_download = True
+        except Exception:
+            needs_download = True
+
+    if needs_download:
+        print("[model_init] yolov3.weights missing or Git LFS pointer. Downloading (~248 MB)...")
+        tmp_path = YOLO_WEIGHTS.with_suffix(".tmp")
+        headers = {"User-Agent": "Mozilla/5.0"}
+        download_success = False
+
+        # Attempt 1: Direct Darknet mirror
+        try:
+            url = "https://pjreddie.com/media/files/yolov3.weights"
+            print(f"    Downloading from: {url}")
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=600) as resp, open(tmp_path, "wb") as f:
+                total_read = 0
+                while chunk := resp.read(2 * 1024 * 1024):
+                    f.write(chunk)
+                    total_read += len(chunk)
+                    if total_read % (50 * 1024 * 1024) < len(chunk):
+                        print(f"    Downloaded {total_read // (1024 * 1024)} MB...")
+            if tmp_path.exists() and tmp_path.stat().st_size >= min_size:
+                tmp_path.replace(YOLO_WEIGHTS)
+                download_success = True
+                print("[model_init] yolov3.weights downloaded successfully!")
+        except Exception as e:
+            print(f"[model_init] Darknet mirror download failed: {e}")
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+        # Attempt 2: Google Drive fallback
+        if not download_success:
+            try:
+                gdrive_id = "1N13RalYAddLPKnXILhSMVojXL8OtUC_X"
+                print("    Attempting fallback download from Google Drive...")
+                confirm_url = f"https://drive.usercontent.google.com/download?id={gdrive_id}&export=download&confirm=t"
+                req = urllib.request.Request(confirm_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=600) as resp, open(tmp_path, "wb") as f:
+                    while chunk := resp.read(2 * 1024 * 1024):
+                        f.write(chunk)
+                if tmp_path.exists() and tmp_path.stat().st_size >= min_size:
+                    tmp_path.replace(YOLO_WEIGHTS)
+                    download_success = True
+                    print("[model_init] Google Drive fallback downloaded successfully!")
+            except Exception as e2:
+                print(f"[model_init] Fallback failed: {e2}")
+                if tmp_path.exists():
+                    tmp_path.unlink()
+
+        if not download_success:
+            raise RuntimeError("Failed to download yolov3.weights automatically. Please provide the file manually in models/.")
+
+ensure_yolo_files()
+
 if not (YOLO_CFG.exists() and YOLO_WEIGHTS.exists() and YOLO_NAMES.exists()):
     raise FileNotFoundError("YOLO cfg/weights/names files not found in models/")
 
