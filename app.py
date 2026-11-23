@@ -46,30 +46,74 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # -------------------------
 # Load models (fail early if missing)
 # -------------------------
-def load_model_compat(path):
-    """Load a Keras H5 model with cross-version compatibility.
-    Patches 'batch_shape' -> 'batch_input_shape' if needed (TF version mismatch).
+def sanitize_keras_config(cfg_str):
+    """Sanitize Keras 3 model config so Keras 2 (TF 2.15) can deserialize it.
+    Fixes:
+      - 'dtype': {'module': 'keras', 'class_name': 'DTypePolicy', 'config': {'name': 'float32'}} -> 'dtype': 'float32'
+      - 'batch_shape' -> 'batch_input_shape'
     """
+    def clean(node):
+        if isinstance(node, dict):
+            # 1. Flatten Keras 3 DTypePolicy dict to simple string like 'float32'
+            if "dtype" in node and isinstance(node["dtype"], dict):
+                node["dtype"] = node["dtype"].get("config", {}).get("name", "float32")
+            # 2. Fix batch_shape -> batch_input_shape for InputLayer
+            if "batch_shape" in node and "batch_input_shape" not in node:
+                node["batch_input_shape"] = node.pop("batch_shape")
+            return {k: clean(v) for k, v in node.items()}
+        elif isinstance(node, list):
+            return [clean(item) for item in node]
+        return node
+
     try:
-        return load_model(str(path), compile=False)
-    except TypeError as e:
-        if 'batch_shape' not in str(e):
-            raise
-        print(f"[compat] Patching model config for batch_shape compatibility...")
+        data = json.loads(cfg_str)
+        cleaned = clean(data)
+        return json.dumps(cleaned)
+    except Exception as err:
+        print(f"[compat] Warning during JSON parse of model_config: {err}")
+        import re
+        cfg_str = cfg_str.replace('"batch_shape"', '"batch_input_shape"')
+        cfg_str = re.sub(
+            r'\"dtype\":\s*\{[^{}]*\"name\":\s*\"([^\"]+)\"[^{}]*\}',
+            r'"dtype": "\1"',
+            cfg_str
+        )
+        return cfg_str
+
+
+def load_model_compat(path):
+    """Load a Keras H5 model with cross-version compatibility (Keras 2 & 3)."""
+    class DTypePolicyFallback:
+        def __init__(self, name="float32", **kwargs):
+            self.name = name
+        def __repr__(self):
+            return self.name
+
+    custom_objects = {
+        "DTypePolicy": DTypePolicyFallback,
+    }
+
+    try:
+        return load_model(str(path), compile=False, custom_objects=custom_objects)
+    except Exception as e:
+        print(f"[compat] Initial model load failed ({e}). Patching model_config...")
         tmp_path = str(path) + ".compat.h5"
         shutil.copy(str(path), tmp_path)
         try:
-            with h5py.File(tmp_path, 'r+') as f:
-                if 'model_config' in f.attrs:
-                    cfg = f.attrs['model_config']
+            with h5py.File(tmp_path, "r+") as f:
+                if "model_config" in f.attrs:
+                    cfg = f.attrs["model_config"]
                     if isinstance(cfg, bytes):
-                        cfg = cfg.decode('utf-8')
-                    cfg = cfg.replace('"batch_shape"', '"batch_input_shape"')
-                    f.attrs['model_config'] = cfg.encode('utf-8')
-            return load_model(tmp_path, compile=False)
+                        cfg = cfg.decode("utf-8")
+                    cleaned_cfg = sanitize_keras_config(cfg)
+                    f.attrs["model_config"] = cleaned_cfg.encode("utf-8")
+            return load_model(tmp_path, compile=False, custom_objects=custom_objects)
         finally:
             if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
 if not FIRE_MODEL_PATH.exists():
     raise FileNotFoundError(f"Fire model not found: {FIRE_MODEL_PATH}")
